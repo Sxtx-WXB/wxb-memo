@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0071e3">
+<title>个人备忘</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+         background: #f5f5f7; color: #1d1d1f; padding: 16px max(16px, env(safe-area-inset-left)) calc(24px + env(safe-area-inset-bottom)); max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  h1 small { font-size: 0.75rem; font-weight: 400; color: #86868b; }
+  input, select, textarea, button { font-size: 16px; border-radius: 8px; border: 1px solid #d2d2d7; padding: 10px 12px; width: 100%; font-family: inherit; background: #fff; color: inherit; }
+  textarea { resize: vertical; min-height: 64px; }
+  button { background: #0071e3; color: #fff; border: none; cursor: pointer; font-weight: 600; }
+  button:hover { background: #0077ed; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar input { flex: 1; min-width: 150px; }
+  .toolbar button { width: auto; white-space: nowrap; }
+  .btn-ghost { background: #86868b; }
+  .btn-ghost:hover { background: #6e6e73; }
+  .bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; font-size: .82rem; color: #6e6e73; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #86868b; display: inline-block; margin-right: 6px; }
+  .dot.ok { background: #34c759; } .dot.warn { background: #ff9f0a; } .dot.err { background: #ff3b30; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { border: 1px solid #d2d2d7; background: #fff; color: #1d1d1f; border-radius: 999px; padding: 4px 12px; font-size: .8rem; font-weight: 500; cursor: pointer; }
+  .chip.active { background: #0071e3; border-color: #0071e3; color: #fff; }
+  .form-area { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px; display: none; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .form-area.show { display: block; }
+  .form-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .form-row > * { flex: 1; min-width: 120px; }
+  .form-row.tight { margin-bottom: 0; }
+  .memo-list { display: flex; flex-direction: column; gap: 8px; }
+  .memo-item { background: #fff; border-radius: 10px; padding: 13px 16px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .memo-item.done { opacity: .5; }
+  .memo-item.overdue .meta { color: #ff3b30; font-weight: 600; }
+  .memo-item .info { flex: 1; min-width: 0; }
+  .memo-item .cat { font-size: .72rem; color: #86868b; letter-spacing: .05em; }
+  .memo-item .title { font-weight: 600; margin: 2px 0; word-break: break-word; }
+  .memo-item .body { font-size: .85rem; color: #515154; white-space: pre-wrap; word-break: break-word; }
+  .memo-item .meta { font-size: .78rem; color: #86868b; margin-top: 4px; }
+  .memo-item .actions { display: flex; gap: 6px; flex: none; }
+  .memo-item .actions button { padding: 6px 10px; font-size: .78rem; width: auto; }
+  .btn-danger { background: #ff3b30; } .btn-danger:hover { background: #e0342a; }
+  .empty { text-align: center; color: #86868b; padding: 32px 12px; background: #fff; border-radius: 10px; }
+  /* 错误提示条：原方案最大的问题就是“失败也看不见” */
+  #errorBox { display: none; background: #fff2f1; border: 1px solid #ffc9c4; color: #a1211a; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; font-size: .85rem; }
+  #errorBox.show { display: block; }
+  #errorBox b { display: block; margin-bottom: 4px; }
+  #errorBox code { display: block; margin-top: 6px; background: #fff; border: 1px solid #ffd9d5; border-radius: 6px; padding: 6px 8px; font-size: .75rem; color: #6e6e73; white-space: pre-wrap; word-break: break-all; }
+  #errorBox button { width: auto; margin-top: 8px; padding: 6px 12px; font-size: .8rem; }
+  .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+           background: #1d1d1f; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: .85rem; opacity: 0;
+           transition: opacity .2s, transform .2s; pointer-events: none; max-width: 90vw; text-align: center; z-index: 99; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.err { background: #ff3b30; }
+  @media (max-width: 560px) {
+    .memo-item { flex-direction: column; }
+    .memo-item .actions { width: 100%; }
+    .memo-item .actions button { flex: 1; }
+  }
+</style>
+</head>
+<body>
+
+<h1>📋 个人备忘 <small id="lastSync"></small></h1>
+
+<div id="errorBox">
+  <b id="errTitle">出错了</b>
+  <span id="errMsg"></span>
+  <code id="errRaw"></code>
+  <button id="errRetry">重试</button>
+</div>
+
+<div class="bar">
+  <span><span class="dot" id="connDot"></span><span id="connText">正在连接…</span></span>
+  <span id="countText"></span>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="searchBox" placeholder="搜索标题 / 内容 / 分类（跨条目检索）" autocomplete="off">
+  <button id="toggleFormBtn">＋ 新增</button>
+</div>
+
+<div class="chips" id="chips"></div>
+
+<div class="form-area" id="formArea">
+  <div class="form-row">
+    <select id="fCategory">
+      <option>工作</option><option>个人</option><option>会议</option><option>定期</option>
+    </select>
+    <input type="text" id="fTitle" placeholder="标题（必填）" autocomplete="off">
+  </div>
+  <textarea id="fContent" placeholder="内容（可选）"></textarea>
+  <div class="form-row">
+    <input type="datetime-local" id="fRemind" title="提醒时间">
+    <select id="fRepeat" title="重复规则">
+      <option value="none">不重复</option>
+      <option value="daily">每天</option>
+      <option value="weekly">每周</option>
+      <option value="monthly">每月</option>
+      <option value="yearly">每年</option>
+    </select>
+  </div>
+  <div class="form-row tight">
+    <button id="saveBtn">保存</button>
+    <button id="cancelBtn" class="btn-ghost">取消</button>
+  </div>
+</div>
+
+<div class="memo-list" id="memoList"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* =========================================================================
+   1. 配置
+   -------------------------------------------------------------------------
+   ⚠️ 关键修正：SUPABASE_URL 必须是“项目根地址”，不能带 /rest/v1/。
+   supabase-js 内部执行 new URL('rest/v1', SUPABASE_URL)，若这里再带
+   /rest/v1/，实际请求会变成 /rest/v1/rest/v1/memos → 404 PGRST125，
+   于是“点保存没反应、列表永远是 0 条”。（已实测复现）
+   浏览器里只能使用 Publishable key，绝不能用 Secret key（会被 Supabase
+   按 User-Agent 拒绝返回 401，且等于把全库权限公开）。
+   ========================================================================= */
+const SUPABASE_URL = 'https://echzblgzvqylgfpbfljj.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_ReK28LH0rTnkfbO7d2i2mg_TzUOEqzr';
+
+const TABLE = 'memos';
+const REFRESH_MS = 60000;   // 兜底轮询：即使实时推送被网络阻断也能同步
+const CATEGORIES = ['工作', '个人', '会议', '定期'];
+
+const $ = id => document.getElementById(id);
+
+/* =========================================================================
+   2. 客户端
+   ========================================================================= */
+if (typeof supabase === 'undefined') {
+  showError('Supabase 客户端库加载失败', '无法从 cdn.jsdelivr.net 加载 supabase-js。请检查网络或改用其他 CDN。', '');
+  throw new Error('supabase-js not loaded');
+}
+
+// URL 自检：把最容易犯的错误在页面上直接说清楚
+if (/\/rest\/v1\/?$/.test(SUPABASE_URL) || SUPABASE_URL.split('/').length > 3) {
+  showError('配置错误：SUPABASE_URL 写成了带路径的地址',
+    '请改成 https://<项目ref>.supabase.co（不要把 /rest/v1/ 写进来），否则所有请求都会 404 (PGRST125)。',
+    'SUPABASE_URL = ' + SUPABASE_URL);
+}
+if (/^sb_secret_/.test(SUPABASE_PUBLISHABLE_KEY)) {
+  showError('危险配置：浏览器里放了 Secret key',
+    'Secret key 会绕过全部行级安全策略，而且 Supabase 会按 User-Agent 拒绝浏览器请求（401）。请改用 sb_publishable_ 开头的 Publishable key，并立即在 Supabase 后台轮换（Roll）已泄露的 Secret key。',
+    '');
+}
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+let allMemos = [];
+let activeCat = '全部';
+let realtimeOk = false;
+let loadInFlight = false;
+
+/* =========================================================================
+   3. 错误可见化 + 提示
+   ========================================================================= */
+let toastTimer = null;
+function toast(msg, isErr) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = 'toast' + (isErr ? ' err' : ''); }, isErr ? 5000 : 2200);
+}
+
+let errorVisible = false;   // 记录错误框状态，避免被成功的读取“误清除”
+let lastErrorKind = '';     // 'read' | 'write'：区分错误来源，决定能否自动清除
+function showError(title, msg, raw) {
+  $('errTitle').textContent = '⚠️ ' + title;
+  $('errMsg').textContent = msg;
+  $('errRaw').textContent = raw || '';
+  $('errRaw').style.display = raw ? 'block' : 'none';
+  $('errorBox').classList.add('show');
+  errorVisible = true;
+}
+function clearError() {
+  $('errorBox').classList.remove('show');
+  errorVisible = false;
+}
+$('errRetry').addEventListener('click', () => { clearError(); load(); });
+
+function setConn(state, text) {
+  $('connDot').className = 'dot ' + state;
+  $('connText').textContent = text;
+}
+
+/**
+ * 把 Supabase/PostgREST 的错误翻译成能直接照着做的中文提示。
+ * 原方案完全没有检查 error，这是“点了保存却什么都没发生”的第二个原因。
+ */
+function explainError(error, action) {
+  const code = error && error.code ? String(error.code) : '';
+  lastErrorKind = (action === '读取') ? 'read' : 'write';
+  const msg = (error && (error.message || error.details || error.hint)) || String(error);
+  const map = {
+    PGRST125: '请求地址不合法：SUPABASE_URL 里多写了 /rest/v1/，导致真实请求变成 /rest/v1/rest/v1/memos。请把 SUPABASE_URL 改成项目根地址 https://<ref>.supabase.co。',
+    '42P01': '数据表不存在：请确认已在 Supabase SQL Editor 建好 ' + TABLE + ' 表。',
+    '42501': '被行级安全策略（RLS）拒绝：表已开启 RLS，但没有给 anon 角色授权。请在 SQL Editor 执行建表脚本中的 create policy 部分。',
+    PGRST301: '接口拒绝访问：可能是 key 无效或已被轮换，请在 Settings → API Keys 重新复制 Publishable key。',
+    PGRST205: 'PostgREST 找不到该表（schema cache 未刷新）：先执行 NOTIFY pgrst, \'reload schema\'; 或稍等再试。',
+    '23505': '唯一约束冲突：已存在相同记录。',
+    '23502': '必填字段为空：标题（title）不能为空。',
+    '22007': '时间格式不合法，请重新选择提醒时间。',
+    '28P01': '认证失败：请检查 key 是否正确。'
+  };
+  let hint = map[code] || '';
+  if (!hint && /Failed to fetch|NetworkError|Load failed|network/i.test(msg)) {
+    hint = '网络请求失败（连接被重置或超时）。请确认本机能访问 echzblgzvqylgfpbfljj.supabase.co：' +
+           '国内网络直连 Supabase 常被重置，可尝试切换网络/代理，或改用国内可达的数据库。';
+  }
+  if (!hint && /row-level security/i.test(msg)) {
+    hint = '被行级安全策略拒绝：请为 anon 角色补上 insert/select/update/delete 策略。';
+  }
+  showError(action + '失败', hint || '请查看下方原始错误信息。', 'code=' + (code || '(无)') + '  ' + msg);
+  setConn('err', '操作失败');
+  toast(action + '失败：' + (hint ? hint.slice(0, 40) + '…' : msg.slice(0, 40)), true);
+}
+
+/* =========================================================================
+   4. 读取
+   ========================================================================= */
+async function load() {
+  if (loadInFlight) return;
+  loadInFlight = true;
+  try {
+    // 跨条目检索交给数据库：标题 / 内容 / 分类
+    const kw = $('searchBox').value.trim();
+    let q = db.from(TABLE).select('*').order('created_at', { ascending: false });
+    if (kw) {
+      const safe = kw.replace(/[%,()]/g, '');
+      q = q.or('title.ilike.%' + safe + '%,content.ilike.%' + safe + '%,category.ilike.%' + safe + '%');
+    }
+    const { data, error } = await q;
+    if (error) { explainError(error, '读取'); return; }
+
+    // 读取成功只代表“读得到”，不代表上一次写入成功，因此不能无条件清掉错误提示。
+    // 只有当错误本来就是读取造成的，才在这里自动清除并提示已恢复。
+    if (errorVisible && lastErrorKind === 'read') {
+      clearError();
+      toast('已恢复连接');
+    }
+    allMemos = data || [];
+    render();
+    setConn(realtimeOk ? 'ok' : 'warn', realtimeOk ? '实时同步已连接' : '轮询同步中（实时通道不可用）');
+    $('lastSync').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+  } catch (e) {
+    explainError(e, '读取');
+  } finally {
+    loadInFlight = false;
+  }
+}
+
+/* =========================================================================
+   5. 渲染
+   ========================================================================= */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const repeatLabel = { none: '', daily: '每天', weekly: '每周', monthly: '每月', yearly: '每年' };
+
+function render() {
+  const list = activeCat === '全部' ? allMemos : allMemos.filter(m => m.category === activeCat);
+
+  if (!list.length) {
+    $('memoList').innerHTML = '<div class="empty">' +
+      (allMemos.length ? '该分类下暂无条目' : '还没有条目，点右上角「＋ 新增」添加第一条') + '</div>';
+  } else {
+    const now = Date.now();
+    $('memoList').innerHTML = list.map(m => {
+      const overdue = m.remind_at && !m.done && new Date(m.remind_at).getTime() < now;
+      return '<div class="memo-item' + (m.done ? ' done' : '') + (overdue ? ' overdue' : '') + '">' +
+        '<div class="info">' +
+          '<div class="cat">' + esc(m.category || '未分类') + '</div>' +
+          '<div class="title">' + esc(m.title) + '</div>' +
+          (m.content ? '<div class="body">' + esc(m.content) + '</div>' : '') +
+          '<div class="meta">' +
+            (m.remind_at ? '⏰ ' + new Date(m.remind_at).toLocaleString('zh-CN') + (overdue ? '（已过期）' : '') : '') +
+            (repeatLabel[m.repeat_rule] ? ' · 重复：' + repeatLabel[m.repeat_rule] : '') +
+          '</div>' +
+        '</div>' +
+        '<div class="actions">' +
+          '<button data-act="toggle" data-id="' + m.id + '" data-done="' + (!m.done) + '">' + (m.done ? '恢复' : '完成') + '</button>' +
+          '<button class="btn-danger" data-act="del" data-id="' + m.id + '" data-title="' + esc(m.title) + '">删除</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+  const und = allMemos.filter(m => !m.done).length;
+  $('countText').textContent = '共 ' + allMemos.length + ' 条 · 未完成 ' + und + ' 条' +
+    (activeCat !== '全部' ? ' · 当前分类：' + activeCat : '');
+}
+
+function renderChips() {
+  $('chips').innerHTML = ['全部'].concat(CATEGORIES).map(c =>
+    '<button class="chip' + (c === activeCat ? ' active' : '') + '" data-cat="' + c + '">' + c + '</button>'
+  ).join('');
+}
+$('chips').addEventListener('click', e => {
+  const c = e.target.getAttribute && e.target.getAttribute('data-cat');
+  if (!c) return;
+  activeCat = c;
+  renderChips();
+  render();
+});
+
+/* 事件委托：避免把 id 拼进 onclick 字符串 */
+$('memoList').addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id = Number(btn.getAttribute('data-id'));
+  const act = btn.getAttribute('data-act');
+  if (act === 'toggle') {
+    await toggleDone(id, btn.getAttribute('data-done') === 'true');
+  } else if (act === 'del') {
+    if (confirm('确认删除「' + btn.getAttribute('data-title') + '」？')) await delMemo(id);
+  }
+});
+
+/* =========================================================================
+   6. 写入
+   ========================================================================= */
+async function saveMemo() {
+  const title = $('fTitle').value.trim();
+  if (!title) { toast('请输入标题', true); $('fTitle').focus(); return; }
+
+  const remindVal = $('fRemind').value;
+  const row = {
+    category: $('fCategory').value,
+    title: title,
+    content: $('fContent').value.trim(),
+    remind_at: remindVal ? new Date(remindVal).toISOString() : null,
+    repeat_rule: $('fRepeat').value
+  };
+
+  const btn = $('saveBtn');
+  btn.disabled = true; btn.textContent = '保存中…';
+  try {
+    // .select() 让 Supabase 回传真正写入的行，可以据此确认“确实存进去了”
+    const { data, error } = await db.from(TABLE).insert(row).select();
+    if (error) { explainError(error, '保存'); return; }
+    if (!data || !data.length) {
+      showError('保存未生效', '服务器返回成功但没有回传数据（可能是 RLS 的 SELECT 策略缺失，或表被触发器拦截）。', '');
+      return;
+    }
+    clearError();
+    toast('已保存：' + data[0].title);
+    $('fTitle').value = ''; $('fContent').value = ''; $('fRemind').value = '';
+    $('formArea').classList.remove('show');
+    await load();                    // 立刻刷新，不等实时推送（原方案漏了这一步）
+  } catch (e) {
+    explainError(e, '保存');
+  } finally {
+    btn.disabled = false; btn.textContent = '保存';
+  }
+}
+
+async function toggleDone(id, done) {
+  try {
+    const { error } = await db.from(TABLE)
+      .update({ done: done, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) { explainError(error, '更新'); return; }
+    clearError();
+    await load();
+  } catch (e) { explainError(e, '更新'); }
+}
+
+async function delMemo(id) {
+  try {
+    const { error } = await db.from(TABLE).delete().eq('id', id);
+    if (error) { explainError(error, '删除'); return; }
+    clearError();
+    await load();
+  } catch (e) { explainError(e, '删除'); }
+}
+
+/* =========================================================================
+   7. 实时订阅（带状态反馈；不可用时自动退回轮询）
+   ========================================================================= */
+function startRealtime() {
+  const ch = db.channel('memos-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE },
+        () => { load(); })
+    .subscribe(status => {
+      realtimeOk = (status === 'SUBSCRIBED');
+      if (realtimeOk) {
+        setConn('ok', '实时同步已连接');
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        setConn('warn', '实时通道不可用，已切换为每 ' + (REFRESH_MS / 1000) + ' 秒轮询');
+      }
+    });
+  return ch;
+}
+
+/* 兜底轮询：即使 WebSocket 被网络阻断（国内直连 Supabase 常见），
+   多终端之间仍能在 REFRESH_MS 内保持一致。 */
+setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+window.addEventListener('online', () => { clearError(); load(); });
+window.addEventListener('offline', () => { setConn('err', '网络已断开'); showError('网络已断开', '请检查网络连接，恢复后会自动重新同步。', ''); });
+
+/* =========================================================================
+   8. 交互
+   ========================================================================= */
+let searchTimer = null;
+$('searchBox').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(load, 300);      // 防抖：输入停顿后再查库
+});
+$('toggleFormBtn').addEventListener('click', () => {
+  $('formArea').classList.toggle('show');
+  if ($('formArea').classList.contains('show')) $('fTitle').focus();
+});
+$('cancelBtn').addEventListener('click', () => $('formArea').classList.remove('show'));
+$('saveBtn').addEventListener('click', saveMemo);
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') saveMemo();
+  if (e.key === 'Escape') $('formArea').classList.remove('show');
+});
+
+/* =========================================================================
+   9. 启动
+   ========================================================================= */
+renderChips();
+setConn('', '正在连接…');
+load();
+startRealtime();
+</script>
+</body>
+</html>
